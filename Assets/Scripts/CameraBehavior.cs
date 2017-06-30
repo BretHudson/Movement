@@ -6,7 +6,7 @@ public class CameraBehavior : MonoBehaviour {
 	public GameObject target;
 	public Vector3 cameraOffset;
 
-	private float rotation;
+	private float pitch, yaw;
 	public float turnSpeed = 5.0f;
 
 	void Start() {
@@ -18,9 +18,12 @@ public class CameraBehavior : MonoBehaviour {
 		var xx = Input.GetAxis("Mouse X");
 		var yy = Input.GetAxis("Mouse Y");
 
-		rotation += xx * turnSpeed * Time.deltaTime;
+		pitch += xx * turnSpeed * Time.deltaTime;
+		yaw += yy * turnSpeed * Time.deltaTime;
+		yaw = Mathf.Clamp(yaw, -45, 80);
 
-		Quaternion quat = Quaternion.AngleAxis(rotation, Vector3.up);
+		//Quaternion quat = Quaternion.AngleAxis(pitch, Vector3.up);
+		Quaternion quat = Quaternion.EulerAngles(-yaw, pitch, 0);
 		transform.position = target.transform.position - (quat * cameraOffset);
 		
 		transform.LookAt(target.transform);

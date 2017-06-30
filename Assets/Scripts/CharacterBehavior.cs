@@ -53,10 +53,6 @@ public class CharacterBehavior : MonoBehaviour {
 		} else {
 			transform.SetLocalScaleY(1.0f);
 		}
-
-		if (IsGrounded()) {
-			Debug.Log("FROUNDED");
-		}
 	}
 
 	void FixedUpdate() {
@@ -81,7 +77,7 @@ public class CharacterBehavior : MonoBehaviour {
 		// If the player has pressed jump, is it okay to do so?
 		if (jumpInputBuffer > 0.0f) {
 			// Make sure we're on the ground
-			if (IsGrounded()) {
+			if ((IsGrounded()) && (jumpDelayTimer > jumpDelay)) {
 				// Set up the timers for scaling and the actual jump
 				jumpScaleTimer = 0.0f;
 				jumpDelayTimer = jumpDelay;
@@ -104,14 +100,23 @@ public class CharacterBehavior : MonoBehaviour {
 		RaycastHit hit;
 		Vector3 slopeOffset = transform.localToWorldMatrix.MultiplyVector(SlopeRaycastOffset);
 		Ray ray = new Ray(transform.position + slopeOffset, Vector3.down);
-		Debug.DrawRay(transform.position + slopeOffset, Vector3.down);
+		Debug.DrawRay(transform.position, Vector3.down);
+		Quaternion rotation = transform.rotation;
 		if (Physics.Raycast(ray, out hit)) {
-			Debug.Log(hit.normal);
-			Quaternion.Slerp(transform.rotation, Quaternion.FromToRotation(transform.up, hit.normal) * transform.rotation, 60.0f * Time.deltaTime);
+			Vector3 newUp;
+			if (Mathf.Abs(Vector3.Dot(hit.normal, Vector3.forward)) < 0.9f) // If it's a slope
+				newUp = hit.normal;
+			else
+				newUp = Vector3.up;
+
+			transform.rotation = Quaternion.FromToRotation(transform.up, newUp) * transform.rotation;
+
+			Debug.DrawRay(transform.position + transform.up, transform.up * 2.0f, Color.green);
 		}
 
 		rigidbody.velocity = transform.forward * moveSpeed * input.magnitude + Vector3.up * velocityY;
-		Debug.Log("VEL: " + velocityY);
+
+		transform.rotation = rotation;
 	}
 
 	public float angleLerpAmount = 50.0f;
