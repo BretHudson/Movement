@@ -6,7 +6,17 @@ public class CharacterBehavior : MonoBehaviour {
 
 	private GameObject camera;
 
-	public float moveSpeed = 3.0f;
+	public LayerMask ground;
+
+	public Vector3 SlopeRaycastOffset;
+
+	public Rigidbody rigidbody;
+	public float gravity = 12.0f;
+	public float jumpHeight = 1.0f;
+	public float jumpDelay = 0.5f;
+	private float jumpDelayTimer = 1.0f;
+	private float velocityY = 0.0f;
+	public float moveSpeed = 5.0f;
 
 	private float targetRotation = 0.0f;
 	private float curRotation = 0.0f;
@@ -18,6 +28,10 @@ public class CharacterBehavior : MonoBehaviour {
 	private float jumpScaleTimer = 1.0f;
 	public float jumpScaleSpeed = 1.0f;
 
+	// Allow the player to hit jump a tenth of a second before they hit the ground
+	private float inputBufferTime = 0.1f;
+	private float jumpInputBuffer = 0.0f;
+
 	void Start() {
 		camera = Camera.main.gameObject;
 	}
@@ -28,31 +42,76 @@ public class CharacterBehavior : MonoBehaviour {
 		if (inputDir.magnitude > 1)
 			inputDir.Normalize();
 
-		// Go ahead and move the player
-		Vector3 moveDir = InputToMovementVector(inputDir);
+		Move(inputDir);
+
+		// Squish squash
+		if (jumpScaleTimer < 1.0f) {
+			float sinValue = jumpScaleTimer * Mathf.PI;
+			float scaleY = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
+			transform.SetLocalScaleY(scaleY);
+			jumpScaleTimer += Time.deltaTime * jumpScaleSpeed;
+		} else {
+			transform.SetLocalScaleY(1.0f);
+		}
+
+		if (IsGrounded()) {
+			Debug.Log("FROUNDED");
+		}
+	}
+
+	void FixedUpdate() {
+		//
+	}
+
+	private void Move(Vector3 input) {
+		Vector3 moveDir = InputToMovementVector(input);
 
 		UpdateAngle(moveDir);
 
-		// Now let's move forward!
-		transform.Translate(Vector3.forward * moveSpeed * inputDir.magnitude * Time.deltaTime);
+		// Apply gravity
+		velocityY -= gravity * Time.deltaTime;
+		if (IsGrounded())
+			velocityY = 0.0f;
 
+		// Get input for jumping
 		if (Input.GetButtonDown("Jump")) {
+			jumpInputBuffer = inputBufferTime;
+		}
+
+		// If the player has pressed jump, is it okay to do so?
+		if (jumpInputBuffer > 0.0f) {
 			// Make sure we're on the ground
 			if (IsGrounded()) {
+				// Set up the timers for scaling and the actual jump
 				jumpScaleTimer = 0.0f;
-				Debug.Log("JUMP");
+				jumpDelayTimer = jumpDelay;
+
+				jumpInputBuffer = 0.0f;
 			}
-			// TODO(bret): Do jump stuff
+
+			jumpInputBuffer -= Time.deltaTime;
 		}
 
-		if (jumpScaleTimer < 1.0f) {
-			Debug.Log(jumpScaleTimer);
-			Vector3 scale = transform.localScale;
-			float sinValue = jumpScaleTimer * Mathf.PI;
-			scale.y = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
-			transform.localScale = scale;
-			jumpScaleTimer += Time.deltaTime * jumpScaleSpeed;
+		if (jumpDelayTimer <= jumpDelay) {
+			if (jumpDelayTimer <= 0.0f) {
+				velocityY = jumpHeight;
+				jumpDelayTimer = jumpDelay + 1.0f;
+			}
+			jumpDelayTimer -= Time.deltaTime;
 		}
+
+		// Check for slopes bruh
+		RaycastHit hit;
+		Vector3 slopeOffset = transform.localToWorldMatrix.MultiplyVector(SlopeRaycastOffset);
+		Ray ray = new Ray(transform.position + slopeOffset, Vector3.down);
+		Debug.DrawRay(transform.position + slopeOffset, Vector3.down);
+		if (Physics.Raycast(ray, out hit)) {
+			Debug.Log(hit.normal);
+			Quaternion.Slerp(transform.rotation, Quaternion.FromToRotation(transform.up, hit.normal) * transform.rotation, 60.0f * Time.deltaTime);
+		}
+
+		rigidbody.velocity = transform.forward * moveSpeed * input.magnitude + Vector3.up * velocityY;
+		Debug.Log("VEL: " + velocityY);
 	}
 
 	public float angleLerpAmount = 50.0f;
@@ -95,6 +154,6 @@ public class CharacterBehavior : MonoBehaviour {
 	}
 
 	private bool IsGrounded() {
-		return Physics.Raycast(transform.position, -Vector3.up, 1.0f);
+		return Physics.Raycast(transform.position, Vector3.down, 0.1f, ground);
 	}
 }
