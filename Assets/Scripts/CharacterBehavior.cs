@@ -8,15 +8,30 @@ public class CharacterBehavior : MonoBehaviour {
 
 	public LayerMask ground;
 
-	public Vector3 SlopeRaycastOffset;
+	[System.Serializable]
+	public class RaycastInfo {
+		public Vector3 slopeRaycastOffset;
+		//public int numBorderRaycasts = 4;
+		//public float raycastDistanceFromCenter = 0.45f;
+	}
+
+	[System.Serializable]
+	public class MovementStats {
+		public float gravity = 30.0f;
+		public float moveSpeed = 12.0f;
+		public float jumpHeight = 14.0f;
+		public float jumpDelay = 0.23f;
+		[HideInInspector]
+		public float jumpDelayTimer = 1.0f;
+		[HideInInspector]
+		public float velocityY = 0.0f;
+	}
+
+	// NOTE(bret): Even though these are now a bit more code to write, while using Unity it certainly makes it easier to sort through variables in the inspector
+	public RaycastInfo raycastInfo;
+	public MovementStats movementStats;
 
 	public Rigidbody rigidbody;
-	public float gravity = 12.0f;
-	public float jumpHeight = 1.0f;
-	public float jumpDelay = 0.5f;
-	private float jumpDelayTimer = 1.0f;
-	private float velocityY = 0.0f;
-	public float moveSpeed = 5.0f;
 
 	private float targetRotation = 0.0f;
 	private float curRotation = 0.0f;
@@ -25,18 +40,27 @@ public class CharacterBehavior : MonoBehaviour {
 	private float oneOver180 = 1.0f / 180.0f;
 	private float maxTurnAngle = 35.0f;
 
+	//private float landScale = 1.0f;
+	//private float jumpScale = 1.0f;
+	private float scaleY = 1.0f;
 	private float jumpScaleTimer = 1.0f;
-	public float jumpScaleSpeed = 1.0f;
+	public float jumpScaleSpeed = 2.5f;
 
 	// Allow the player to hit jump a tenth of a second before they hit the ground
 	private float inputBufferTime = 0.1f;
 	private float jumpInputBuffer = 0.0f;
+
+	public float angleLerpAmount = 70.0f;
 
 	void Start() {
 		camera = Camera.main.gameObject;
 	}
 
 	void Update() {
+
+	}
+
+	void FixedUpdate() {
 		// Get input and do an elementary way of normalizing diagonal movement
 		Vector3 inputDir = new Vector3(Input.GetAxis("Horizontal"), 0f, Input.GetAxis("Vertical"));
 		if (inputDir.magnitude > 1)
@@ -44,43 +68,78 @@ public class CharacterBehavior : MonoBehaviour {
 
 		Move(inputDir);
 
-		// Squish squash
+		float jumpScale;
 		if (jumpScaleTimer < 1.0f) {
 			float sinValue = jumpScaleTimer * Mathf.PI;
-			float scaleY = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
-			transform.SetLocalScaleY(scaleY);
+			jumpScale = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
 			jumpScaleTimer += Time.deltaTime * jumpScaleSpeed;
+			Debug.Log("JUMP:  " + jumpScale);
 		} else {
-			transform.SetLocalScaleY(1.0f);
+			jumpScale = 1.0f;
+		}
+
+		// Squish squash
+		float scaleXZ = 1.0f / scaleY;
+		transform.SetLocalScaleX(scaleXZ);
+		transform.SetLocalScaleY(scaleY);
+		transform.SetLocalScaleZ(scaleXZ);
+	}
+
+	private IEnumerator DoScaleStuff(float scaleSpeed, float amount) {
+		float timer = 0.0f;
+		while (timer < 1.0f) {
+			float sinValue = timer * Mathf.PI;
+			scaleY = 1.0f - amount * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
+			timer += Time.deltaTime * scaleSpeed;
+			yield return 0;
 		}
 	}
 
-	void FixedUpdate() {
-		//
+	// Taken from Kyle Pulver's Otter2D Util class
+	public float ScaleClamp(float value, float min, float max, float min2, float max2) {
+		value = min2 + ((value - min) / (max - min)) * (max2 - min2);
+		if (max2 > min2) {
+			value = value < max2 ? value : max2;
+			return value > min2 ? value : min2;
+		}
+		value = value < min2 ? value : min2;
+		return value > max2 ? value : max2;
 	}
 
+	public Renderer cylinder;
 	private void Move(Vector3 input) {
 		Vector3 moveDir = InputToMovementVector(input);
 
 		UpdateAngle(moveDir);
+		//cylinder.enabled = IsGrounded();
 
 		// Apply gravity
-		velocityY -= gravity * Time.deltaTime;
-		if (IsGrounded())
-			velocityY = 0.0f;
+		movementStats.velocityY -= movementStats.gravity * Time.deltaTime;
+		if (IsGrounded()) {
+			float velY = Mathf.Abs(movementStats.velocityY);
+			if (velY > 5.0f) {
+				float amount = ScaleClamp(velY, 5.0f, 20.0f, 0.05f, 0.2f);
+				StartCoroutine(DoScaleStuff(4.0f, amount));
+				Debug.Log("FELL");
+			}
+			movementStats.velocityY = 0.0f;
+		}
 
 		// Get input for jumping
 		if (Input.GetButtonDown("Jump")) {
 			jumpInputBuffer = inputBufferTime;
+			Debug.Log("1) Jump pressed");
 		}
 
 		// If the player has pressed jump, is it okay to do so?
 		if (jumpInputBuffer > 0.0f) {
 			// Make sure we're on the ground
-			if ((IsGrounded()) && (jumpDelayTimer > jumpDelay)) {
+			if ((IsGrounded()) && (movementStats.jumpDelayTimer > movementStats.jumpDelay)) {
 				// Set up the timers for scaling and the actual jump
 				jumpScaleTimer = 0.0f;
-				jumpDelayTimer = jumpDelay;
+				StartCoroutine(DoScaleStuff(jumpScaleSpeed, 0.2f));
+				movementStats.jumpDelayTimer = movementStats.jumpDelay;
+				Debug.Log("2) Jump started");
 
 				jumpInputBuffer = 0.0f;
 			}
@@ -88,21 +147,22 @@ public class CharacterBehavior : MonoBehaviour {
 			jumpInputBuffer -= Time.deltaTime;
 		}
 
-		if (jumpDelayTimer <= jumpDelay) {
-			if (jumpDelayTimer <= 0.0f) {
-				velocityY = jumpHeight;
-				jumpDelayTimer = jumpDelay + 1.0f;
+		if (movementStats.jumpDelayTimer <= movementStats.jumpDelay) {
+			if (movementStats.jumpDelayTimer <= 0.0f) {
+				movementStats.velocityY = movementStats.jumpHeight;
+				Debug.LogWarning("3) Jump happened " + movementStats.velocityY);
+				movementStats.jumpDelayTimer = movementStats.jumpDelay + 1.0f;
 			}
-			jumpDelayTimer -= Time.deltaTime;
+			movementStats.jumpDelayTimer -= Time.deltaTime;
 		}
 
 		// Check for slopes bruh
 		RaycastHit hit;
-		Vector3 slopeOffset = transform.localToWorldMatrix.MultiplyVector(SlopeRaycastOffset);
+		Vector3 slopeOffset = transform.localToWorldMatrix.MultiplyVector(raycastInfo.slopeRaycastOffset);
 		Ray ray = new Ray(transform.position + slopeOffset, Vector3.down);
 		Debug.DrawRay(transform.position, Vector3.down);
 		Quaternion rotation = transform.rotation;
-		if (Physics.Raycast(ray, out hit)) {
+		if (Physics.Raycast(ray, out hit, 2.0f)) {
 			Vector3 newUp;
 			if (Mathf.Abs(Vector3.Dot(hit.normal, Vector3.forward)) < 0.9f) // If it's a slope
 				newUp = hit.normal;
@@ -114,12 +174,11 @@ public class CharacterBehavior : MonoBehaviour {
 			Debug.DrawRay(transform.position + transform.up, transform.up * 2.0f, Color.green);
 		}
 
-		rigidbody.velocity = transform.forward * moveSpeed * input.magnitude + Vector3.up * velocityY;
+		Vector3 forwardMovement = transform.forward * movementStats.moveSpeed * input.magnitude;
+		rigidbody.velocity = forwardMovement + Vector3.up * movementStats.velocityY;
 
 		transform.rotation = rotation;
 	}
-
-	public float angleLerpAmount = 50.0f;
 
 	private void UpdateAngle(Vector3 moveDir) {
 		if (moveDir.magnitude > 0) {
@@ -159,6 +218,14 @@ public class CharacterBehavior : MonoBehaviour {
 	}
 
 	private bool IsGrounded() {
-		return Physics.Raycast(transform.position, Vector3.down, 0.1f, ground);
+		bool Result = false;
+
+		RaycastHit hit;
+		if (rigidbody.SweepTest(Vector3.down, out hit, 0.1f)) {
+			Debug.Log(hit.transform);
+			Result = true;
+		}
+
+		return Result;
 	}
 }
