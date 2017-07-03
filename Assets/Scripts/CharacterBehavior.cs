@@ -8,6 +8,8 @@ public class CharacterBehavior : MonoBehaviour {
 
 	public LayerMask ground;
 
+	private Vector3 startPos;
+
 	[System.Serializable]
 	public class RaycastInfo {
 		public Vector3 slopeRaycastOffset;
@@ -56,10 +58,7 @@ public class CharacterBehavior : MonoBehaviour {
 
 	void Start() {
 		camera = Camera.main.gameObject;
-	}
-
-	void Update() {
-
+		startPos = transform.position;
 	}
 
 	void FixedUpdate() {
@@ -73,6 +72,13 @@ public class CharacterBehavior : MonoBehaviour {
 			inputDir = Vector3.zero;
 
 		Move(inputDir);
+
+		if (Input.GetKeyDown(KeyCode.R)) {
+			rigidbody.velocity = Vector3.zero;
+			transform.position = startPos;
+			transform.rotation = Quaternion.AngleAxis(0, Vector3.up);
+			scaleY = 1.0f;
+		}
 
 		/*float jumpScale;
 		if (jumpScaleTimer < 1.0f) {
@@ -118,7 +124,7 @@ public class CharacterBehavior : MonoBehaviour {
 
 		UpdateAngle(moveDir);
 		
-		cylinder.enabled = isGrounded;
+		//cylinder.enabled = isGrounded;
 
 		// Apply gravity
 		movementStats.velocityY -= movementStats.gravity * Time.deltaTime;
@@ -188,7 +194,8 @@ public class CharacterBehavior : MonoBehaviour {
 		}
 
 		Vector3 forwardMovement = transform.forward * movementStats.moveSpeed * input.magnitude;
-		rigidbody.velocity = forwardMovement + (Vector3.up * movementStats.velocityY);
+		Vector3 verticalMovement = Vector3.up * movementStats.velocityY;
+		rigidbody.velocity = forwardMovement + verticalMovement;
 
 		transform.rotation = rotation;
 	}
