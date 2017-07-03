@@ -33,7 +33,6 @@ public class CameraBehavior : MonoBehaviour {
 		// Input
 		lookAtGoal += (Input.GetKey(KeyCode.G) ? 1.0f : -1.0f) * Time.deltaTime * 1.5f;
 		lookAtGoal = Mathf.Clamp01(lookAtGoal);
-		//Debug.Log(lookAtGoal);
 
 		if (Input.GetKeyDown(KeyCode.P)) {
 			pauseMouseMovement = !pauseMouseMovement;
@@ -65,42 +64,6 @@ public class CameraBehavior : MonoBehaviour {
 
 			SetPosition(newPos, targetPos);
 		}
-
-		/*if (collidingWithWall) {
-			transform.position += transform.forward * 0.5f;
-		}*/
-
-		// Old wall clipping code that didn't work :( It was kind of complex, so I decided perhaps it was best to find a simpler alternative
-		/*Vector3 clipDir = new Vector3(0, 0, cam.nearClipPlane);
-		float halfFoV = cam.fieldOfView * Mathf.Deg2Rad * 0.5f;
-		clipDir.x = Mathf.Tan(halfFoV) * clipDir.z;
-		clipDir.y = clipDir.x / cam.aspect;
-
-		clipDir.Normalize();
-		clipDir *= (targetPos - transform.position).magnitude;
-
-		float startDistance = 999999.0f;
-		float distance = startDistance;
-		for (int clipCheckIndex = 0; clipCheckIndex < 4; ++clipCheckIndex) {
-			// Flip either the x or y coords
-			if (clipCheckIndex % 2 == 0)
-				clipDir.y *= -1.0f;
-			else
-				clipDir.x *= -1.0f;
-
-			Vector3 clipCheck = transform.rotation * clipDir;
-			Ray ray = new Ray(transform.position, clipCheck);
-			Debug.DrawRay(transform.position, clipCheck, Color.magenta);
-			RaycastHit hit;
-			if (Physics.Raycast(ray, out hit, clipCheck.magnitude, collisionLayer)) {
-				distance = Mathf.Min(distance, hit.distance);
-			}
-		}
-
-		if (distance != startDistance) {
-			// We can move it forward
-			transform.position += transform.forward * distance;
-		}*/
 	}
 
 	private Vector3 smoothVel;
@@ -115,5 +78,16 @@ public class CameraBehavior : MonoBehaviour {
 
 	private float EaseInOut(float t) {
 		return t <= .5 ? t * t * 2 : 1 - (--t) * t * 2;
+	}
+
+	public void AtGoal() {
+		Debug.Log("At goal holla");
+		pitch = Mathf.PI;
+		yaw = -0.4f;
+		pauseMouseMovement = true;
+	}
+
+	public void GameReset() {
+		pauseMouseMovement = false;
 	}
 }

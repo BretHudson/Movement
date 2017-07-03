@@ -4,6 +4,8 @@ using System.Collections;
 
 public class CharacterBehavior : MonoBehaviour {
 
+	public bool madeItToGoal = false;
+
 	private GameObject camera;
 
 	public LayerMask ground;
@@ -37,6 +39,8 @@ public class CharacterBehavior : MonoBehaviour {
 	public Rigidbody rigidbody;
 	public CapsuleCollider collider;
 
+	private GameObject goal;
+
 	private float targetRotation = 0.0f;
 	private float curRotation = 0.0f;
 	private float turnSmoothTime = 0.2f;
@@ -44,11 +48,11 @@ public class CharacterBehavior : MonoBehaviour {
 	private float oneOver180 = 1.0f / 180.0f;
 	private float maxTurnAngle = 35.0f;
 
-	//private float landScale = 1.0f;
-	//private float jumpScale = 1.0f;
 	private float scaleY = 1.0f;
 	private float jumpScaleTimer = 1.0f;
 	public float jumpScaleSpeed = 2.5f;
+
+	private Vector3 sidedashMovement = Vector3.zero;
 
 	// Allow the player to hit jump a tenth of a second before they hit the ground
 	private float inputBufferTime = 0.1f;
@@ -71,30 +75,44 @@ public class CharacterBehavior : MonoBehaviour {
 		if (Input.GetKey(KeyCode.G))
 			inputDir = Vector3.zero;
 
-		Move(inputDir);
+		if (Input.GetKeyDown(KeyCode.Q))
+			DoSidedash(1);
+		if (Input.GetKeyDown(KeyCode.E))
+			DoSidedash(-1);
 
-		if (Input.GetKeyDown(KeyCode.R)) {
-			rigidbody.velocity = Vector3.zero;
-			transform.position = startPos;
-			transform.rotation = Quaternion.AngleAxis(0, Vector3.up);
-			scaleY = 1.0f;
+		if (madeItToGoal) {
+			UpdateAngle(goal.transform.forward);
+			Vector3 vel = rigidbody.velocity;
+			vel.x = vel.z = 0.0f;
+			rigidbody.velocity = vel;
+			// Infinitely jump, ha!
+			RegisterJumpPressed();
+			Move(Vector3.zero);
+		} else {
+			Move(inputDir);
 		}
 
-		/*float jumpScale;
-		if (jumpScaleTimer < 1.0f) {
-			float sinValue = jumpScaleTimer * Mathf.PI;
-			jumpScale = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
-			jumpScaleTimer += Time.deltaTime * jumpScaleSpeed;
-			//Debug.Log("JUMP:  " + jumpScale);
-		} else {
-			jumpScale = 1.0f;
-		}*/
+		if ((transform.position.y < -40.0f) || (Input.GetKeyDown(KeyCode.R)))
+			ResetToStart();
 
 		// Squish squash
 		float scaleXZ = 1.0f / scaleY;
 		transform.SetLocalScaleX(scaleXZ);
 		transform.SetLocalScaleY(scaleY);
 		transform.SetLocalScaleZ(scaleXZ);
+	}
+
+	private void DoSidedash(int dir) {
+		sidedashMovement = -transform.right * 20.0f * (float)dir;
+	}
+
+	private void ResetToStart() {
+		rigidbody.velocity = Vector3.zero;
+		transform.position = startPos;
+		transform.rotation = Quaternion.AngleAxis(0, Vector3.up);
+		scaleY = 1.0f;
+		madeItToGoal = false;
+		camera.GetComponent<CameraBehavior>().GameReset();
 	}
 
 	private IEnumerator DoScaleStuff(float scaleSpeed, float amount) {
@@ -119,12 +137,10 @@ public class CharacterBehavior : MonoBehaviour {
 	}
 
 	public Renderer cylinder;
-	private void Move(Vector3 input) {
-		Vector3 moveDir = InputToMovementVector(input);
+	private void Move(Vector3 inputDir) {
+		Vector3 moveDir = InputToMovementVector(inputDir);
 
 		UpdateAngle(moveDir);
-		
-		//cylinder.enabled = isGrounded;
 
 		// Apply gravity
 		movementStats.velocityY -= movementStats.gravity * Time.deltaTime;
@@ -133,16 +149,13 @@ public class CharacterBehavior : MonoBehaviour {
 			if (velY > 5.0f) {
 				float amount = ScaleClamp(velY, 5.0f, 20.0f, 0.05f, 0.2f);
 				StartCoroutine(DoScaleStuff(4.0f, amount));
-				Debug.Log("FELL");
 			}
 			movementStats.velocityY = -1.0f; // Just enough where we don't fall through the floor, but continue to have collisions
 		}
 
 		// Get input for jumping
-		if (Input.GetButtonDown("Jump")) {
-			jumpInputBuffer = inputBufferTime;
-//			Debug.Log("1) Jump pressed");
-		}
+		if (Input.GetButtonDown("Jump"))
+			RegisterJumpPressed();
 
 		// Variable jumping because variable jumping is usually good
 		if ((movementStats.velocityY > 0) && (!Input.GetButton("Jump"))) {
@@ -157,7 +170,6 @@ public class CharacterBehavior : MonoBehaviour {
 				jumpScaleTimer = 0.0f;
 				StartCoroutine(DoScaleStuff(jumpScaleSpeed, 0.2f));
 				movementStats.jumpDelayTimer = movementStats.jumpDelay;
-//				Debug.Log("2) Jump started");
 
 				jumpInputBuffer = 0.0f;
 			}
@@ -169,7 +181,6 @@ public class CharacterBehavior : MonoBehaviour {
 			if (movementStats.jumpDelayTimer <= 0.0f) {
 				movementStats.velocityY = movementStats.jumpHeight;
 				isGrounded = false;
-//				Debug.LogWarning("3) Jump happened " + movementStats.velocityY);
 				movementStats.jumpDelayTimer = movementStats.jumpDelay + 1.0f;
 			}
 			movementStats.jumpDelayTimer -= Time.deltaTime;
@@ -193,11 +204,21 @@ public class CharacterBehavior : MonoBehaviour {
 			Debug.DrawRay(transform.position + transform.up, transform.up * 2.0f, Color.green);
 		}
 
-		Vector3 forwardMovement = transform.forward * movementStats.moveSpeed * input.magnitude;
+		Vector3 forwardMovement = transform.forward * movementStats.moveSpeed * inputDir.magnitude;
 		Vector3 verticalMovement = Vector3.up * movementStats.velocityY;
-		rigidbody.velocity = forwardMovement + verticalMovement;
+		rigidbody.velocity = forwardMovement + verticalMovement + sidedashMovement;
 
 		transform.rotation = rotation;
+
+		// Make the sidedash weaken over time, duh
+		if (sidedashMovement.magnitude > 1.0f)
+			sidedashMovement = Vector3.Lerp(sidedashMovement, Vector3.zero, 4.5f * Time.deltaTime);
+		else
+			sidedashMovement = Vector3.zero;
+	}
+
+	private void RegisterJumpPressed() {
+		jumpInputBuffer = inputBufferTime;
 	}
 
 	private void UpdateAngle(Vector3 moveDir) {
@@ -216,7 +237,13 @@ public class CharacterBehavior : MonoBehaviour {
 		transform.rotation = Quaternion.AngleAxis(newRotation, Vector3.up);
 
 		// Pop it! Tilt it!
-		float lean = -(angleBetween * oneOver180) * 50.0f;
+		float turnLean = -(angleBetween * oneOver180) * 50.0f;
+		float dashLean = ScaleClamp(sidedashMovement.magnitude, 0.0f, 20.0f, 0.0f, 40.0f);
+
+		// Figure out if we're going left or right
+		dashLean *= Mathf.Sign((sidedashMovement - transform.right).magnitude - (sidedashMovement + transform.right).magnitude);
+
+		float lean = (Mathf.Abs(turnLean) > Mathf.Abs(dashLean)) ? turnLean : dashLean;
 		Vector3 euler = transform.eulerAngles;
 		euler.z = Mathf.Lerp(euler.z, lean, angleLerpAmount * Time.deltaTime);
 		transform.eulerAngles = euler;
@@ -249,13 +276,19 @@ public class CharacterBehavior : MonoBehaviour {
 
 	void OnCollisionStay(Collision collision) {
 		HandleCollision(collision);
-
-		Debug.Log(collision.impulse + " " + rigidbody.velocity);
 	}
 
 	void OnCollisionExit(Collision collision) {
 		// No matter what, always assume that we just left the ground
 		// The reason why, is that OnCollisionEnter/Stay will set it back to grounded if we're grounded
 		isGrounded = false;
+	}
+
+	void OnTriggerEnter(Collider collider) {
+		if ((!madeItToGoal) && (collider.CompareTag("Goal"))) {
+			madeItToGoal = true;
+			goal = collider.gameObject;
+			camera.GetComponent<CameraBehavior>().AtGoal();
+		}
 	}
 }
