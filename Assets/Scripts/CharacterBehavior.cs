@@ -30,8 +30,10 @@ public class CharacterBehavior : MonoBehaviour {
 	// NOTE(bret): Even though these are now a bit more code to write, while using Unity it certainly makes it easier to sort through variables in the inspector
 	public RaycastInfo raycastInfo;
 	public MovementStats movementStats;
+	private bool isGrounded = false;
 
 	public Rigidbody rigidbody;
+	public CapsuleCollider collider;
 
 	private float targetRotation = 0.0f;
 	private float curRotation = 0.0f;
@@ -66,17 +68,21 @@ public class CharacterBehavior : MonoBehaviour {
 		if (inputDir.magnitude > 1)
 			inputDir.Normalize();
 
+		// If we're looking at the goal, please don't move
+		if (Input.GetKey(KeyCode.G))
+			inputDir = Vector3.zero;
+
 		Move(inputDir);
 
-		float jumpScale;
+		/*float jumpScale;
 		if (jumpScaleTimer < 1.0f) {
 			float sinValue = jumpScaleTimer * Mathf.PI;
 			jumpScale = 1.0f - 0.2f * Mathf.Sin(sinValue * 2.0f) * Mathf.Sin(sinValue);
 			jumpScaleTimer += Time.deltaTime * jumpScaleSpeed;
-			Debug.Log("JUMP:  " + jumpScale);
+			//Debug.Log("JUMP:  " + jumpScale);
 		} else {
 			jumpScale = 1.0f;
-		}
+		}*/
 
 		// Squish squash
 		float scaleXZ = 1.0f / scaleY;
@@ -111,35 +117,41 @@ public class CharacterBehavior : MonoBehaviour {
 		Vector3 moveDir = InputToMovementVector(input);
 
 		UpdateAngle(moveDir);
-		//cylinder.enabled = IsGrounded();
+		
+		cylinder.enabled = isGrounded;
 
 		// Apply gravity
 		movementStats.velocityY -= movementStats.gravity * Time.deltaTime;
-		if (IsGrounded()) {
+		if (isGrounded) {
 			float velY = Mathf.Abs(movementStats.velocityY);
 			if (velY > 5.0f) {
 				float amount = ScaleClamp(velY, 5.0f, 20.0f, 0.05f, 0.2f);
 				StartCoroutine(DoScaleStuff(4.0f, amount));
 				Debug.Log("FELL");
 			}
-			movementStats.velocityY = 0.0f;
+			movementStats.velocityY = -1.0f; // Just enough where we don't fall through the floor, but continue to have collisions
 		}
 
 		// Get input for jumping
 		if (Input.GetButtonDown("Jump")) {
 			jumpInputBuffer = inputBufferTime;
-			Debug.Log("1) Jump pressed");
+//			Debug.Log("1) Jump pressed");
+		}
+
+		// Variable jumping because variable jumping is usually good
+		if ((movementStats.velocityY > 0) && (!Input.GetButton("Jump"))) {
+			movementStats.velocityY -= movementStats.gravity * Time.deltaTime;
 		}
 
 		// If the player has pressed jump, is it okay to do so?
 		if (jumpInputBuffer > 0.0f) {
 			// Make sure we're on the ground
-			if ((IsGrounded()) && (movementStats.jumpDelayTimer > movementStats.jumpDelay)) {
+			if ((isGrounded) && (movementStats.jumpDelayTimer > movementStats.jumpDelay)) {
 				// Set up the timers for scaling and the actual jump
 				jumpScaleTimer = 0.0f;
 				StartCoroutine(DoScaleStuff(jumpScaleSpeed, 0.2f));
 				movementStats.jumpDelayTimer = movementStats.jumpDelay;
-				Debug.Log("2) Jump started");
+//				Debug.Log("2) Jump started");
 
 				jumpInputBuffer = 0.0f;
 			}
@@ -150,7 +162,8 @@ public class CharacterBehavior : MonoBehaviour {
 		if (movementStats.jumpDelayTimer <= movementStats.jumpDelay) {
 			if (movementStats.jumpDelayTimer <= 0.0f) {
 				movementStats.velocityY = movementStats.jumpHeight;
-				Debug.LogWarning("3) Jump happened " + movementStats.velocityY);
+				isGrounded = false;
+//				Debug.LogWarning("3) Jump happened " + movementStats.velocityY);
 				movementStats.jumpDelayTimer = movementStats.jumpDelay + 1.0f;
 			}
 			movementStats.jumpDelayTimer -= Time.deltaTime;
@@ -175,7 +188,7 @@ public class CharacterBehavior : MonoBehaviour {
 		}
 
 		Vector3 forwardMovement = transform.forward * movementStats.moveSpeed * input.magnitude;
-		rigidbody.velocity = forwardMovement + Vector3.up * movementStats.velocityY;
+		rigidbody.velocity = forwardMovement + (Vector3.up * movementStats.velocityY);
 
 		transform.rotation = rotation;
 	}
@@ -214,18 +227,28 @@ public class CharacterBehavior : MonoBehaviour {
 
 	private float Ease(float t) {
 		return t * t;
-		//return -t * (t - 2);
 	}
 
-	private bool IsGrounded() {
-		bool Result = false;
-
-		RaycastHit hit;
-		if (rigidbody.SweepTest(Vector3.down, out hit, 0.1f)) {
-			Debug.Log(hit.transform);
-			Result = true;
+	private void HandleCollision(Collision collision) {
+		// If the impulse is pushing us up, then we've hit it going downwards (thus, it's the ground)
+		if (collision.impulse.y > 0.0f) {
+			isGrounded = true;
 		}
+	}
 
-		return Result;
+	void OnCollisionEnter(Collision collision) {
+		HandleCollision(collision);
+	}
+
+	void OnCollisionStay(Collision collision) {
+		HandleCollision(collision);
+
+		Debug.Log(collision.impulse + " " + rigidbody.velocity);
+	}
+
+	void OnCollisionExit(Collision collision) {
+		// No matter what, always assume that we just left the ground
+		// The reason why, is that OnCollisionEnter/Stay will set it back to grounded if we're grounded
+		isGrounded = false;
 	}
 }
